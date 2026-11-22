@@ -44,11 +44,11 @@
         android:maxLines="1" />
 
     <EditText
-        android:id="@+id/confirmInput"
+        android:id="@+id/usernameInput"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="确认密码"
-        android:inputType="textPassword"
+        android:hint="用户名（可选，需要用户名的站点才填）"
+        android:inputType="text"
         android:maxLines="1" />
 
     <LinearLayout

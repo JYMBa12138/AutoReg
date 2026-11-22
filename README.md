@@ -29,7 +29,8 @@ node server.js
 }
 ```
 
-- `password` / `confirm` 留空时，按页面上 `input[type=password]` 的出现顺序填（第一个密码、第二个确认密码），能适配大量没有 name 属性的 SPA。
+- `password` / `confirm` 留空时，按页面上 `input[type=password]` 的出现顺序全部填同一个密码（含确认密码），能适配大量没有 name 属性的 SPA。界面只要求填一次密码。
+- 邮箱和用户名分开填：`email` 必填，`username` 可选（留空取邮箱前缀）；`fields.username` 留空时用通用选择器探测，探测到的框与邮箱框是同一个就跳过，不会把邮箱重复填进用户名。
 - `registerApi` 写 null 时改成「等任意 POST」，再靠页面跳转判断是否成功。
 - 界面里也能选「通用」，不套站点配置，全靠上面这些兜底选择器现场探测。
 

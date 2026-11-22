@@ -41,15 +41,22 @@ object InjectJs {
 
   var state = { filled: false, submitted: false, done: false };
 
-  function fillOnce(email, pass, conf) {
-    var em = pick('input[type="email"], #email, input[name="email"]');
-    var un = pick('input[name="username"], #username, input[name="user"]');
+  function fillOnce(email, user, pass) {
+    var em = pick('input[type="email"], #email, input[name="email"], input[name="mail"]');
+    var un = pick('input[name="username"], #username, input[name="user"], input[name="nickname"], input[name="user_name"], input[placeholder*="用户名"]');
     var pws = document.querySelectorAll('input[type="password"]');
     if (!em && !un && pws.length === 0) return false;
     if (em) { setVal(em, email); A.onLog('已填邮箱'); }
-    else if (un) { setVal(un, email); A.onLog('已填用户名'); }
-    if (pws.length >= 1) { setVal(pws[0], pass); A.onLog('已填密码'); }
-    if (pws.length >= 2) { setVal(pws[1], conf); A.onLog('已填确认密码'); }
+    else if (un) { setVal(un, user || email); A.onLog('已填用户名'); }
+    // 邮箱和用户名是同一个框就不重复填
+    if (em && un && un !== em && user) { setVal(un, user); A.onLog('已填用户名'); }
+    var filledPw = 0;
+    for (var i = 0; i < pws.length; i++) {
+      if (pws[i].offsetParent === null) continue;
+      setVal(pws[i], pass);
+      filledPw++;
+    }
+    if (filledPw) A.onLog(filledPw >= 2 ? '已填密码（含确认密码 ' + filledPw + ' 个框）' : '已填密码');
     state.filled = true;
     return true;
   }
@@ -128,12 +135,12 @@ object InjectJs {
   }
 
   window.__autoreg = {
-    run: function (email, pass, conf) {
+    run: function (email, user, pass) {
       A.onStatus('正在填写表单');
       var tries = 0;
       var iv = setInterval(function () {
         tries++;
-        if (fillOnce(email, pass, conf)) {
+        if (fillOnce(email, user, pass)) {
           clearInterval(iv);
           A.onStatus('表单已填写，等待人机验证');
           pollToken();

@@ -24,7 +24,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var urlInput: EditText
     private lateinit var emailInput: EditText
     private lateinit var passwordInput: EditText
-    private lateinit var confirmInput: EditText
+    private lateinit var usernameInput: EditText
     private lateinit var siteSpinner: Spinner
 
     private var pending: String? = null
@@ -46,7 +46,7 @@ class MainActivity : AppCompatActivity() {
         urlInput = findViewById(R.id.urlInput)
         emailInput = findViewById(R.id.emailInput)
         passwordInput = findViewById(R.id.passwordInput)
-        confirmInput = findViewById(R.id.confirmInput)
+        usernameInput = findViewById(R.id.usernameInput)
         siteSpinner = findViewById(R.id.siteSpinner)
 
         setupWebView()
@@ -96,8 +96,8 @@ class MainActivity : AppCompatActivity() {
             val o = JSONObject(p)
             call = "window.__autoreg && window.__autoreg.run(" +
                 JSONObject.quote(o.optString("email")) + "," +
-                JSONObject.quote(o.optString("pass")) + "," +
-                JSONObject.quote(o.optString("conf")) + ")"
+                JSONObject.quote(o.optString("user")) + "," +
+                JSONObject.quote(o.optString("pass")) + ")"
         } catch (e: Exception) {
             statusText.text = "参数有误：" + e.message
             return
@@ -110,7 +110,7 @@ class MainActivity : AppCompatActivity() {
     private fun start() {
         val email = emailInput.text.toString().trim()
         val password = passwordInput.text.toString()
-        val confirm = confirmInput.text.toString()
+        val username = usernameInput.text.toString().trim()
         val url = urlInput.text.toString().trim()
 
         if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
@@ -121,10 +121,6 @@ class MainActivity : AppCompatActivity() {
             toast("密码至少 8 位")
             return
         }
-        if (password != confirm) {
-            toast("两次密码不一致")
-            return
-        }
         if (!url.startsWith("http")) {
             toast("请填写以 http 开头的注册页地址")
             return
@@ -133,8 +129,8 @@ class MainActivity : AppCompatActivity() {
         statusText.text = "正在打开注册页…"
         pending = JSONObject()
             .put("email", email)
+            .put("user", if (username.isNotEmpty()) username else email.substringBefore("@"))
             .put("pass", password)
-            .put("conf", confirm)
             .toString()
 
         web.loadUrl(url)
@@ -143,7 +139,7 @@ class MainActivity : AppCompatActivity() {
     private fun reset() {
         emailInput.setText("")
         passwordInput.setText("")
-        confirmInput.setText("")
+        usernameInput.setText("")
         statusText.text = "已清空。填好邮箱和密码，点「开始注册」。"
         pending = null
         web.loadUrl("about:blank")

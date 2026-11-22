@@ -61,22 +61,23 @@ button.ghost{width:100%;margin-top:8px}
     <select id="site"></select>
     <label>目标注册页</label>
     <input id="url" placeholder="https://..." value="https://chuan.sylu.cc/sign-up?aff=UpsG" />
-    <label>用户名 / 邮箱</label>
-    <input id="username" placeholder="注册时填写" autocomplete="off" />
+    <label>电子邮箱</label>
+    <input id="email" placeholder="name@example.com" autocomplete="off" />
+    <label>用户名（可选，需要用户名的站点才填）</label>
+    <input id="username" placeholder="留空则用邮箱前缀" autocomplete="off" />
     <label>密码（8-20 位）</label>
-    <input id="password" type="password" placeholder="注册时填写" autocomplete="new-password" />
-    <label>确认密码</label>
-    <input id="confirm" type="password" placeholder="留空则同密码" autocomplete="new-password" />
+    <input id="password" type="password" placeholder="填一次，注册页要填两次会自动填两次" autocomplete="new-password" />
     <details>
-      <summary>邮箱收信（SMTP / IMAP，可留空）</summary>
+      <summary>邮箱收信（IMAP，可留空；要自动取验证码就填这里）</summary>
       <div class="row"><div><label>IMAP 主机</label><input id="mhost" placeholder="imap.qq.com" /></div><div><label>端口</label><input id="mport" placeholder="993" /></div></div>
       <label>邮箱账号</label><input id="muser" placeholder="留空" autocomplete="off" />
       <label>邮箱密码 / 授权码</label><input id="mpass" type="password" placeholder="留空" autocomplete="off" />
+      <button id="mtest" class="ghost" type="button">测试 IMAP 连接</button>
     </details>
     <label id="dry"><input type="checkbox" id="dryRun" /> 演练模式（填表 + 等验证，不点提交、不创建账号）</label>
     <button id="go" class="primary">开始注册</button>
     <button id="shut" class="ghost">关闭自动化浏览器</button>
-    <div class="hint">该站 <b>有 Cloudflare Turnstile</b>，注册页没有邮箱字段。脚本会填好表后等你通过验证，再点提交。</div>
+    <div class="hint">邮箱必填；用户名只在站点要求时填，留空自动取邮箱前缀。密码填一次，注册页有几个密码框（含确认密码）就自动填几次。需要人机验证的站点会等你通过再提交。</div>
   </section>
   <div class="right">
     <section class="card" id="shotbox">
@@ -89,6 +90,17 @@ button.ghost{width:100%;margin-top:8px}
 <script>
 const $ = id => document.getElementById(id);
 const logEl = $('log');
+$('mtest').addEventListener('click', async () => {
+  const mail = { host: $('mhost').value.trim(), port: $('mport').value.trim(), user: $('muser').value.trim(), pass: $('mpass').value };
+  if (!mail.host || !mail.user || !mail.pass) { addLog('IMAP 主机 / 账号 / 密码都要填', 'e'); return; }
+  $('mtest').disabled = true; $('mtest').textContent = '连接中…';
+  try {
+    const r = await fetch('/api/mail/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mail }) });
+    const j = await r.json();
+    addLog((j.ok ? 'IMAP 连接成功：' : 'IMAP 连接失败：') + (j.message || ''), j.ok ? 'k' : 'e');
+  } catch (e) { addLog('测试请求失败：' + e.message, 'e'); }
+  $('mtest').disabled = false; $('mtest').textContent = '测试 IMAP 连接';
+});
 function addLog(text, cls){
   const d = document.createElement('div');
   const t = new Date().toLocaleTimeString('zh-CN', {hour12:false});
@@ -108,13 +120,13 @@ function showBanner(text){
 $('bannerClose').onclick = () => $('banner').classList.remove('on');
 
 const saved = JSON.parse(localStorage.getItem('autoreg') || '{}');
-['url','username','mhost','mport','muser'].forEach(k => { if (saved[k]) $(k).value = saved[k]; });
+['url','email','username','mhost','mport','muser'].forEach(k => { if (saved[k]) $(k).value = saved[k]; });
 function persist(){
   const o = {};
-  ['url','username','mhost','mport','muser'].forEach(k => o[k] = $(k).value);
+  ['url','email','username','mhost','mport','muser'].forEach(k => o[k] = $(k).value);
   localStorage.setItem('autoreg', JSON.stringify(o));
 }
-['url','username','mhost','mport','muser'].forEach(k => $(k).addEventListener('change', persist));
+['url','email','username','mhost','mport','muser'].forEach(k => $(k).addEventListener('change', persist));
 
 const siteMap = {};
 fetch('/api/sites').then(r => r.json()).then(j => {
@@ -151,14 +163,16 @@ fetch('/api/sites').then(r => r.json()).then(j => {
 $('shot').onload = () => { $('shot').style.display = 'block'; $('shotph').style.display = 'none'; };
 $('go').onclick = async () => {
   const body = {
-    url: $('url').value.trim(), username: $('username').value.trim(),
-    password: $('password').value, confirmPassword: $('confirm').value || $('password').value,
+    url: $('url').value.trim(),
+    email: $('email').value.trim(), username: $('username').value.trim(),
+    password: $('password').value,
     mail: $('mhost').value ? { host: $('mhost').value.trim(), port: $('mport').value.trim() || 993, user: $('muser').value.trim(), pass: $('mpass').value, secure: true } : null,
     dryRun: $('dryRun').checked,
     site: $('site').value
   };
   $('banner').classList.remove('on');
-  if (!body.url || !body.username || !body.password) { alert('地址、用户名/邮箱、密码都要填'); return; }
+  if (!body.url || !body.email || !body.password) { alert('地址、邮箱、密码都要填'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) { alert('邮箱格式不对'); return; }
   $('go').disabled = true;
   logEl.innerHTML = '';
   try {

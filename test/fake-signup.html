@@ -1,0 +1,18 @@
+<!doctype html><meta charset="utf-8"><title>fake signup</title>
+<style>body{font:16px system-ui;padding:24px}label{display:block;margin:12px 0}input{width:320px;padding:8px}</style>
+<form id="f">
+<label>邮箱<input id="email" name="email" type="email" placeholder="请输入邮箱"></label>
+<label>用户名<input name="username" placeholder="用户名"></label>
+<label>密码<input id="password" name="password" type="password" placeholder="创建一个安全的密码"></label>
+<label>再次输入新密码<input name="confirmPassword" type="password"></label>
+<input type="hidden" name="cf-turnstile-response" value="fake-token">
+<button type="submit">创建账户</button>
+</form><pre id="r"></pre>
+<script>
+document.getElementById('f').addEventListener('submit', async e => {
+  e.preventDefault();
+  const body = Object.fromEntries(new FormData(e.target));
+  const res = await fetch('/api/fake-register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  document.getElementById('r').textContent = JSON.stringify(await res.json(), null, 2);
+});
+</script>

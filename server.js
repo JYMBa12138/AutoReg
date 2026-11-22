@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { register } from './lib/registrar.js';
 import { resolveSite, listSites } from './lib/sites.js';
 import { getContext, closeContext } from './lib/browser.js';
+import { testMailConfig } from './lib/mail.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -68,6 +69,16 @@ async function snap() {
   } catch (e) {}
 }
 
+app.post('/api/mail/test', async (req, res) => {
+  const cfg = (req.body && req.body.mail) || {};
+  try {
+    const out = await testMailConfig(cfg);
+    res.json(out);
+  } catch (e) {
+    res.json({ ok: false, message: '测试出错: ' + ((e && e.message) || String(e)) });
+  }
+});
+
 app.get('/api/sites', (req, res) => {
   res.json({ sites: listSites() });
 });
@@ -102,10 +113,13 @@ app.post('/api/register', async (req, res) => {
   const b = req.body || {};
   const site = resolveSite(String(b.site || '') || String(b.url || ''));
   const url = String(b.url || '').trim() || String(site.signupUrl || '').trim();
-  const username = String(b.username || '').trim();
+  const email = String(b.email || '').trim();
   const password = String(b.password || '');
+  // 用户名可选：没填就用邮箱前缀，需要用户名的站点照样有值填
+  const username = String(b.username || '').trim() || (email ? email.split('@')[0] : '');
   if (!url) return res.status(400).json({ ok: false, message: '没给注册地址，站点配置里也没有默认地址' });
-  if (!username || !password) return res.status(400).json({ ok: false, message: '邮箱/用户名和密码都要填' });
+  if (!email || !password) return res.status(400).json({ ok: false, message: '邮箱和密码都要填' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ ok: false, message: '邮箱格式不对' });
   if (password.length < 8) return res.status(400).json({ ok: false, message: '密码至少 8 位' });
   running = true;
   logs = [];
@@ -115,8 +129,7 @@ app.post('/api/register', async (req, res) => {
     emit('log', { text: '站点: ' + site.name });
     const out = await register({
       site,
-      url, username, password,
-      confirmPassword: String(b.confirmPassword || password),
+      url, email, username, password,
       mail: b.mail || null,
       dryRun: !!b.dryRun,
       timeoutMs: Number(b.timeoutMs) || 300000
