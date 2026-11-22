@@ -13,11 +13,26 @@
    - 拿到 token 后点页面上的「创建账户」按钮，让站点自己的前端发请求
    - 监听成功 / 失败文案并回报到顶部状态栏
 4. 若出现「请验证您是真人」复选框，**在下方网页里点一下**，token 会自己写进去，流程继续。
+5. 站点如果还要**邮箱验证码**：APP 会点「发送验证码」，自己连 IMAP 收信、抠出验证码、填进去再提交——不用你去邮箱里翻。
+
+## 邮箱验证码（IMAP 收信）
+
+APP 里「邮箱收信（IMAP）」那一段填三项：IMAP 主机（如 `imap.qq.com`，填一次就记住了）、端口（默认 993）、密码/授权码。
+**QQ / 163 / 126 这类要填「授权码」**（在邮箱网页版设置里开 IMAP 时生成），不是你登录邮箱的密码；Gmail 要开两步验证后用应用专用密码。
+邮箱一填，主机名会按域名自动猜（qq/163/126/gmail/outlook/sina/sohu/139/aliyun 等）；填完点「测试 IMAP 连接」先确认能连上。
+不填 IMAP 也能用：遇到要验证码的站会停下来，让你在网页里手填（最多等 5 分钟）。
+
+只读收信，不发信，不碰你的其他邮件——只取最近 20 封里发给注册邮箱的那几封。
+
+## 隐私
+
+邮箱密码/授权码存在 App 自己的 SharedPreferences 里（仅本机，不上传）；注册密码只走内存。
 
 ## 目录
 
 - `app/src/main/java/com/autoreg/app/MainActivity.kt` — WebView 宿主、表单、桥接
 - `app/src/main/java/com/autoreg/app/InjectJs.kt` — 注入页面的自动化脚本
+- `app/src/main/java/com/autoreg/app/ImapCode.kt` — 直连 IMAP 收信抠验证码（JavaMail，无服务端）
 - `app/src/main/res/layout/activity_main.xml` — 界面
 - `build-local.ps1` — Windows 本机自动装 SDK 并打包
 - `.github/workflows/build-apk.yml` — 推到 GitHub 后自动出 APK
@@ -53,6 +68,7 @@ debug 包签名是自动生成的，能直接装。要长期分发就自己生�
 - **不能上架 Google Play / 国内应用商店**：自动注册工具违反商店政策。只能侧载，自己用或小范围发。
 - 每台手机独立跑，不共享登录态。
 - 部分站点在 WebView 里 Turnstile 会弹图片题，需要手动点；点完流程会自动继续。
+- IMAP 只认最近 20 封、20 分钟内的邮件；邮箱里码来得更早或更多封堆积时会找不到，退回让你手填。
 - 站点如果关了密码注册（比如 chuan.sylu.cc 现在就是关的），APP 也救不了，会显示站点返回的失败原因。
 - 密码只存在内存和输入框里，不写文件、不上传。
 

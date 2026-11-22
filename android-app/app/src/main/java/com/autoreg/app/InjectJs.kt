@@ -39,6 +39,117 @@ object InjectJs {
     return !!pick('.cf-turnstile, [id*="cf-chl-widget"]');
   }
 
+  function mailReady() {
+    try { return !!(window.Android && window.Android.isMailReady && window.Android.isMailReady()); } catch (e) { return false; }
+  }
+
+  function findSendBtn() {
+    var nodes = document.querySelectorAll('button, a[role="button"], .btn, input[type="button"]');
+    var re = /发送验证码|获取验证码|发验证码|获取邮箱验证码|send code|send verification|get code|发送/;
+    for (var i = 0; i < nodes.length; i++) {
+      var t = (nodes[i].innerText || nodes[i].value || nodes[i].textContent || '').trim();
+      if (re.test(t) && !/手机|短信|sms|phone/i.test(t) && nodes[i].offsetParent !== null) return nodes[i];
+    }
+    return null;
+  }
+
+  function findCodeInput() {
+    var sel = 'input[name*="code" i], input[id*="code" i], input[name*="verify" i], input[id*="verify" i],' +
+      'input[name*="captcha" i], input[placeholder*="验证码"], input[placeholder*="verification"],' +
+      'input[autocomplete="one-time-code"], input[inputmode="numeric"]';
+    var els;
+    try { els = document.querySelectorAll(sel); } catch (e) { return null; }
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (el.offsetParent === null || el.disabled) continue;
+      if ((el.type || '') === 'password') continue;
+      return el;
+    }
+    return null;
+  }
+
+  function findConfirm() {
+    var nodes = document.querySelectorAll('button, input[type="submit"], [role="button"], .btn');
+    var re = /^(确认|确定|验证|下一步|继续|提交|完成|verify|confirm|next|continue|submit|ok)$/i;
+    for (var i = 0; i < nodes.length; i++) {
+      var t = (nodes[i].innerText || nodes[i].value || nodes[i].textContent || '').trim();
+      if (re.test(t) && nodes[i].offsetParent !== null) return nodes[i];
+    }
+    return null;
+  }
+
+  var codeState = { asked: false, asked2: false, got: false, manual: false };
+
+  function clickConfirm(codeEl) {
+    var b = findConfirm();
+    if (b) { b.click(); return true; }
+    if (codeEl) {
+      codeEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+      codeEl.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13, bubbles: true }));
+      return true;
+    }
+    return false;
+  }
+
+  function fillCode(code) {
+    var el = findCodeInput();
+    if (!el) { A.onResult(false, '页面上找不到验证码输入框'); return false; }
+    codeState.got = true;
+    setVal(el, code);
+    A.onLog('已填验证码 ' + code);
+    if (!clickConfirm(el)) A.onLog('没找到确认按钮，回车代替提交');
+    return true;
+  }
+
+  // 页面要邮箱验证码这一步：点发送 → 问 App 要码 → 填进去 → 继续
+  function emailCodeStep(email, next) {
+    var sendBtn = findSendBtn();
+    var codeEl = findCodeInput();
+    if (!sendBtn && !codeEl) { next(); return; }
+
+    if (sendBtn && codeState.asked === false) {
+      A.onLog('这个站要邮箱验证码，点发送验证码');
+      codeState.asked = true;
+      sendBtn.click();
+      A.onLog('已点发送验证码，等验证码框出现');
+    } else if (codeEl) {
+      A.onLog('页面上已经有验证码框');
+    }
+
+    var waited = 0;
+    var iv = setInterval(function () {
+      if (state.done) { clearInterval(iv); return; }
+      if (codeState.got) { clearInterval(iv); next(); return; }
+      var el = findCodeInput();
+      waited += 1000;
+      if (el && !mailReady() && !codeState.manual) {
+        codeState.manual = true;
+        A.onStatus('这个站要邮箱验证码。在上面填 IMAP 收信我会自己取，或者在这里手动填（最多等 5 分钟）');
+      }
+      if (el && !codeState.asked2) {
+        if (mailReady()) {
+          codeState.asked2 = true;
+          A.onStatus('等验证码邮件…');
+          var ok = false;
+          try { ok = window.Android.requestCode(email); } catch (e) { ok = false; }
+          if (!ok) A.onLog('App 取码请求失败');
+        } else {
+          // 没配 IMAP：让人手填，填了就往下走
+          codeState.asked2 = true;
+          A.onStatus('等你手填验证码（最多等 5 分钟）');
+        }
+      }
+      if (codeState.asked2 && !mailReady()) {
+        var v = el ? String(el.value || '').trim() : '';
+        if (/^\d{4,8}$/.test(v)) { codeState.got = true; }
+      }
+      if (waited > 300000) {
+        clearInterval(iv);
+        A.onResult(false, '等验证码超时，请在网页里手动填一下');
+      }
+    }, 1000);
+  }
+
   var state = { filled: false, submitted: false, done: false };
 
   function fillOnce(email, user, pass) {
@@ -143,14 +254,23 @@ object InjectJs {
         if (fillOnce(email, user, pass)) {
           clearInterval(iv);
           A.onStatus('表单已填写，等待人机验证');
-          pollToken();
+          emailCodeStep(email, pollToken);
         } else if (tries > 40) {
           clearInterval(iv);
           A.onResult(false, '页面上找不到输入框，可能站点结构变了');
         }
       }, 800);
     },
-    ping: function () { return 'ok'; }
+    ping: function () { return 'ok'; },
+    onCode: function (code) {
+      A.onLog('收到验证码 ' + code);
+      fillCode(code);
+    },
+    onCodeFail: function (msg) {
+      A.onStatus('收信没拿到码（' + msg + '），请手动填验证码');
+      codeState.asked2 = true;
+      codeState.manual = true;
+    }
   };
 })();"""
 }

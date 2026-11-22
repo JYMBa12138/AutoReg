@@ -26,8 +26,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var passwordInput: EditText
     private lateinit var usernameInput: EditText
     private lateinit var siteSpinner: Spinner
+    private lateinit var mHost: EditText
+    private lateinit var mPort: EditText
+    private lateinit var mUser: EditText
+    private lateinit var mPass: EditText
 
     private var pending: String? = null
+
+    @Volatile
+    private var mailCfg: ImapCode.Cfg? = null
 
     data class Site(val name: String, val url: String)
 
@@ -35,6 +42,26 @@ class MainActivity : AppCompatActivity() {
         Site("星驰 API (xingchiapi.com)", "https://xingchiapi.com/register?aff=YEBlQMo6DFM25"),
         Site("启源星 (chuan.sylu.cc)", "https://chuan.sylu.cc/sign-up?aff=UpsG"),
         Site("自定义地址", "")
+    )
+
+    private val presets = mapOf(
+        "qq.com" to "imap.qq.com",
+        "foxmail.com" to "imap.qq.com",
+        "163.com" to "imap.163.com",
+        "126.com" to "imap.126.com",
+        "yeah.net" to "imap.yeah.net",
+        "188.com" to "imap.188.com",
+        "gmail.com" to "imap.gmail.com",
+        "googlemail.com" to "imap.gmail.com",
+        "outlook.com" to "outlook.office365.com",
+        "hotmail.com" to "outlook.office365.com",
+        "live.com" to "outlook.office365.com",
+        "msn.com" to "outlook.office365.com",
+        "sina.com" to "imap.sina.com",
+        "sina.cn" to "imap.sina.cn",
+        "sohu.com" to "imap.sohu.com",
+        "139.com" to "imap.139.com",
+        "aliyun.com" to "imap.aliyun.com"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,6 +75,10 @@ class MainActivity : AppCompatActivity() {
         passwordInput = findViewById(R.id.passwordInput)
         usernameInput = findViewById(R.id.usernameInput)
         siteSpinner = findViewById(R.id.siteSpinner)
+        mHost = findViewById(R.id.mhost)
+        mPort = findViewById(R.id.mport)
+        mUser = findViewById(R.id.muser)
+        mPass = findViewById(R.id.mpass)
 
         setupWebView()
 
@@ -62,8 +93,20 @@ class MainActivity : AppCompatActivity() {
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }
 
+        loadMailPrefs()
+        if (mHost.text.isEmpty()) mHost.setText(detectHost(emailInput.text.toString()))
+
+        // 邮箱一改，IMAP 主机跟着猜（只填空的，不动手填过的）
+        emailInput.setOnFocusChangeListener { _, _ -> maybeAutofillHost() }
+        emailInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) { maybeAutofillHost() }
+        })
+
         findViewById<Button>(R.id.startBtn).setOnClickListener { start() }
         findViewById<Button>(R.id.clearBtn).setOnClickListener { reset() }
+        findViewById<Button>(R.id.mtest).setOnClickListener { testMail() }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -126,6 +169,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        saveMailPrefs()
+        mailCfg = buildMailCfg(email)
+        mailCfg?.let { statusText.text = "邮箱收信已就绪（" + it.host + "）" }
+
         statusText.text = "正在打开注册页…"
         pending = JSONObject()
             .put("email", email)
@@ -145,6 +192,71 @@ class MainActivity : AppCompatActivity() {
         web.loadUrl("about:blank")
     }
 
+    // ---------- IMAP ----------
+
+    private fun detectHost(email: String): String {
+        val domain = email.substringAfter("@", "").trim().lowercase()
+        if (domain.isEmpty()) return ""
+        return presets[domain] ?: ""
+    }
+
+    private fun maybeAutofillHost() {
+        val guess = detectHost(emailInput.text.toString())
+        if (guess.isEmpty()) return
+        if (mHost.text.toString().trim().isEmpty()) mHost.setText(guess)
+        if (mPort.text.toString().trim().isEmpty()) mPort.setText("993")
+    }
+
+    private fun buildMailCfg(email: String): ImapCode.Cfg? {
+        val host = mHost.text.toString().trim()
+        val pass = mPass.text.toString()
+        if (host.isEmpty() || pass.isEmpty()) return null
+        val port = mPort.text.toString().trim().toIntOrNull() ?: 993
+        val user = mUser.text.toString().trim().ifEmpty { email }
+        return ImapCode.Cfg(host = host, port = port, user = user, pass = pass, ssl = port == 993 || port == 995)
+    }
+
+    private fun prefs() = getSharedPreferences("autoreg", MODE_PRIVATE)
+
+    private fun loadMailPrefs() {
+        val sp = prefs()
+        mHost.setText(sp.getString("mhost", ""))
+        val p = sp.getInt("mport", 0)
+        if (p > 0) mPort.setText(p.toString())
+        mUser.setText(sp.getString("muser", ""))
+        mPass.setText(sp.getString("mpass", ""))
+    }
+
+    private fun saveMailPrefs() {
+        prefs().edit()
+            .putString("mhost", mHost.text.toString().trim())
+            .putInt("mport", mPort.text.toString().trim().toIntOrNull() ?: 0)
+            .putString("muser", mUser.text.toString().trim())
+            .putString("mpass", mPass.text.toString())
+            .apply()
+    }
+
+    private fun testMail() {
+        saveMailPrefs()
+        val cfg = buildMailCfg(emailInput.text.toString().trim())
+        if (cfg == null) {
+            toast("IMAP 主机和密码/授权码都要填")
+            return
+        }
+        statusText.text = "正在连 " + cfg.host + ":" + cfg.port + " …"
+        Thread {
+            val msg = try {
+                "✅ " + ImapCode.test(cfg)
+            } catch (e: Exception) {
+                "❌ " + (e.message ?: e.toString())
+            }
+            runOnUiThread {
+                statusText.text = msg
+                toast(msg)
+            }
+        }.start()
+    }
+
     private fun toast(m: String) {
         Toast.makeText(this, m, Toast.LENGTH_SHORT).show()
     }
@@ -160,6 +272,46 @@ class MainActivity : AppCompatActivity() {
         fun onResult(ok: Boolean, msg: String) = runOnUiThread {
             statusText.text = (if (ok) "✔ " else "✘ ") + msg
             toast(if (ok) "注册完成" else msg)
+        }
+
+        /** 页面要验证码时先问一句：App 这边有没有配好收信。 */
+        @JavascriptInterface
+        fun isMailReady(): Boolean = mailCfg != null
+
+        /** 去收件箱里捞一封最近发到 email 的验证码邮件；结果异步回给页面。 */
+        @JavascriptInterface
+        fun requestCode(email: String): Boolean {
+            val cfg = mailCfg ?: buildMailCfg(email) ?: return false
+            mailCfg = cfg
+            val target = email.trim()
+            runOnUiThread { statusText.text = "去收件箱找验证码…" }
+            Thread {
+                var code: String? = null
+                var fail: String? = null
+                try {
+                    val hit = ImapCode.latestCode(cfg, target, 20)
+                    if (hit == null) fail = "最近 20 分钟没收到带验证码的邮件"
+                    else code = hit.first
+                } catch (e: Exception) {
+                    fail = e.message ?: e.toString()
+                }
+                runOnUiThread {
+                    if (code != null) {
+                        statusText.text = "收到验证码 " + code
+                        web.evaluateJavascript(
+                            "window.__autoreg && window.__autoreg.onCode(" + JSONObject.quote(code) + ")",
+                            null
+                        )
+                    } else {
+                        statusText.text = "收信失败：" + (fail ?: "未知错误")
+                        web.evaluateJavascript(
+                            "window.__autoreg && window.__autoreg.onCodeFail(" + JSONObject.quote(fail ?: "未知错误") + ")",
+                            null
+                        )
+                    }
+                }
+            }.start()
+            return true
         }
     }
 }
