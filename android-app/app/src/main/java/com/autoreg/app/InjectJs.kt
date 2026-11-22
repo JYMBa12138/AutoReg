@@ -78,6 +78,44 @@ object InjectJs {
     return null;
   }
 
+  // 站点有时先弹「条款更新通知 —— 同意并继续」或者 cookie 同意条，挡在注册页前面，自动点掉它
+  var consentRe = /^(同意并继续|同意并继续使用|同意并继续注册|我同意|同意|接受|接受并继续|接受全部|继续使用|agree and continue|agree & continue|accept and continue|accept all|i agree|agree|accept|continue)$/i;
+  var denyRe = /拒绝|不同意|不接受|取消|稍后|decline|reject|cancel|disagree|later/i;
+
+  function visible(el) {
+    if (!el) return false;
+    var r = el.getBoundingClientRect ? el.getBoundingClientRect() : { width: 0, height: 0 };
+    return r.width > 0 && r.height > 0;
+  }
+
+  function findConsentButton() {
+    var nodes = document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"]');
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      var t = (n.innerText || n.value || n.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!t || t.length > 24) continue;
+      if (denyRe.test(t)) continue;
+      if (!consentRe.test(t)) continue;
+      if (!visible(n) || n.disabled) continue;
+      return n;
+    }
+    return null;
+  }
+
+  var consentState = { clicked: 0, lastText: '' };
+
+  function acceptConsent() {
+    if (consentState.clicked >= 15) return false;
+    var b = findConsentButton();
+    if (!b) return false;
+    var t = (b.innerText || b.value || b.textContent || '').replace(/\s+/g, ' ').trim();
+    consentState.clicked++;
+    consentState.lastText = t;
+    try { b.click(); } catch (e) {}
+    A.onLog('弹出条款/同意提示，已点「' + t + '」');
+    return true;
+  }
+
   var codeState = { asked: false, asked2: false, got: false, manual: false };
 
   function clickConfirm(codeEl) {
@@ -249,15 +287,41 @@ object InjectJs {
     run: function (email, user, pass) {
       A.onStatus('正在填写表单');
       var tries = 0;
-      var iv = setInterval(function () {
+      var filled = false;
+
+      // 全程盯着条款/同意提示：挡住注册页就点「同意并继续」，点完等页面刷新再重新找输入框
+      var consentIv = setInterval(function () {
+        if (state.done) { clearInterval(consentIv); return; }
+        if (acceptConsent()) {
+          setTimeout(function () {
+            if (state.done) return;
+            if (fillOnce(email, user, pass)) {
+              if (!filled) {
+                filled = true;
+                if (fillIv) clearInterval(fillIv);
+                A.onStatus('表单已填写，等待人机验证');
+                emailCodeStep(email, pollToken);
+              }
+            }
+          }, 1500);
+        }
+      }, 1200);
+      var consentDeadline = setTimeout(function () { clearInterval(consentIv); }, 600000);
+
+      var fillIv = setInterval(function () {
         tries++;
+        if (state.done) { clearInterval(fillIv); clearInterval(consentIv); clearTimeout(consentDeadline); return; }
         if (fillOnce(email, user, pass)) {
-          clearInterval(iv);
-          A.onStatus('表单已填写，等待人机验证');
-          emailCodeStep(email, pollToken);
-        } else if (tries > 40) {
-          clearInterval(iv);
-          A.onResult(false, '页面上找不到输入框，可能站点结构变了');
+          clearInterval(fillIv);
+          if (!filled) {
+            filled = true;
+            A.onStatus('表单已填写，等待人机验证');
+            emailCodeStep(email, pollToken);
+          }
+        } else if (tries > 150) {
+          clearInterval(fillIv);
+          clearInterval(consentIv);
+          A.onResult(false, '页面上找不到输入框，可能站点结构变了（有弹窗挡住就手动点一下「同意并继续」）');
         }
       }, 800);
     },
