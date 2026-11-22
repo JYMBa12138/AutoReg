@@ -18,15 +18,39 @@ object InjectJs {
 
   function pick(sel) { try { return document.querySelector(sel); } catch (e) { return null; } }
 
+  // 按钮是不是躺在「条款/同意」那种遮罩里：这种按钮归 acceptConsent 管，不能拿去提交注册
+  function inConsentBox(el) {
+    var p = el;
+    for (var i = 0; i < 4 && p; i++) {
+      p = p.parentElement;
+      if (!p) break;
+      var tx = (p.innerText || '').slice(0, 600);
+      if (/条款|服务条款|隐私政策|使用政策|terms of service|privacy policy|terms update|policy update/i.test(tx) &&
+          /拒绝|不同意|decline|reject/i.test(tx)) return true;
+    }
+    return false;
+  }
+
   function findSubmit() {
-    var nodes = document.querySelectorAll('button, input[type="submit"], a[role="button"], .btn');
-    var re = /创建账户|注册|提交|sign up|register|create account/i;
+    var nodes = document.querySelectorAll('button, input[type="submit"], input[type="button"], a[role="button"], [role="button"], .btn');
+    // 强：明确是注册/提交；弱：流程推进词（有的站按钮就叫「继续」「下一步」）
+    var strong = /创建账户|创建账号|注册|提交|完成注册|sign up|signup|register|create account|submit/i;
+    var weak = /^(继续|下一步|继续注册|下一步骤|continue|next|proceed)$/i;
+    var bad = /登录|login|sign in|github|linuxdo|linux\.do|发送验证码|获取验证码|发验证码|重发|重新发送|send code|resend|手机|短信|sms|phone/i;
+    var consent = /同意|接受|agree|accept|decline|拒绝|不同意|取消|cancel|later/i;
+    var best = null, bestScore = 0;
     for (var i = 0; i < nodes.length; i++) {
       var n = nodes[i];
-      var t = (n.innerText || n.value || n.textContent || '').trim();
-      if (re.test(t) && !/登录|login|github|linuxdo|linux\.do/i.test(t)) return n;
+      var t = (n.innerText || n.value || n.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!t || t.length > 24) continue;
+      if (bad.test(t) || consent.test(t)) continue;
+      if (n.offsetParent === null || n.disabled) continue;
+      var score = strong.test(t) ? 2 : (weak.test(t) ? 1 : 0);
+      if (!score) continue;
+      if (inConsentBox(n)) continue;
+      if (score > bestScore) { best = n; bestScore = score; }
     }
-    return null;
+    return best;
   }
 
   function hasWidget() {
