@@ -67,12 +67,14 @@ button.ghost{width:100%;margin-top:8px}
     <input id="username" placeholder="留空则用邮箱前缀" autocomplete="off" />
     <label>密码（8-20 位）</label>
     <input id="password" type="password" placeholder="填一次，注册页要填两次会自动填两次" autocomplete="new-password" />
-    <details>
-      <summary>邮箱收信（IMAP，可留空；要自动取验证码就填这里）</summary>
-      <div class="row"><div><label>IMAP 主机</label><input id="mhost" placeholder="imap.qq.com" /></div><div><label>端口</label><input id="mport" placeholder="993" /></div></div>
-      <label>邮箱账号</label><input id="muser" placeholder="留空" autocomplete="off" />
+    <details id="mailbox" open>
+      <summary>邮箱收信（IMAP）—— 填了它，验证码邮件我自己收、自己填</summary>
+      <div class="hint" style="margin:6px 0">只管收信，不用填发信服务器。QQ/163 这类要填「授权码」而不是登录密码。填好点一下测试，通了我就能在注册时自动把验证码填进去。</div>
+      <div class="row"><div><label>IMAP 主机</label><input id="mhost" placeholder="imap.qq.com" /></div><div><label>端口</label><input id="mport" placeholder="993" value="993" /></div></div>
+      <label>邮箱账号</label><input id="muser" placeholder="留空则用上面填的邮箱" autocomplete="off" />
       <label>邮箱密码 / 授权码</label><input id="mpass" type="password" placeholder="留空" autocomplete="off" />
       <button id="mtest" class="ghost" type="button">测试 IMAP 连接</button>
+      <div class="hint" id="mstat"></div>
     </details>
     <label id="dry"><input type="checkbox" id="dryRun" /> 演练模式（填表 + 等验证，不点提交、不创建账号）</label>
     <button id="go" class="primary">开始注册</button>
@@ -98,9 +100,32 @@ $('mtest').addEventListener('click', async () => {
     const r = await fetch('/api/mail/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mail }) });
     const j = await r.json();
     addLog((j.ok ? 'IMAP 连接成功：' : 'IMAP 连接失败：') + (j.message || ''), j.ok ? 'k' : 'e');
+    const st = $('mstat');
+    if (st) { st.textContent = (j.ok ? '✅ ' : '❌ ') + (j.message || ''); st.style.color = j.ok ? '#3fb950' : '#f85149'; }
   } catch (e) { addLog('测试请求失败：' + e.message, 'e'); }
   $('mtest').disabled = false; $('mtest').textContent = '测试 IMAP 连接';
 });
+// 常见邮箱服务商的 IMAP 主机（按邮箱域名自动填，省得查）
+const IMAP_PRESETS = {
+  'qq.com': 'imap.qq.com', 'foxmail.com': 'imap.qq.com',
+  '163.com': 'imap.163.com', '126.com': 'imap.126.com', 'yeah.net': 'imap.yeah.net',
+  'gmail.com': 'imap.gmail.com', 'googlemail.com': 'imap.gmail.com',
+  'outlook.com': 'outlook.office365.com', 'hotmail.com': 'outlook.office365.com', 'live.com': 'outlook.office365.com', 'msn.com': 'outlook.office365.com',
+  'sina.com': 'imap.sina.com', 'sina.cn': 'imap.sina.com',
+  'sohu.com': 'imap.sohu.com', '139.com': 'imap.139.com',
+  'aliyun.com': 'imap.aliyun.com', '188.com': 'imap.188.com'
+};
+function autofillImap(){
+  const email = ($('email').value || '').trim();
+  const dom = email.split('@')[1] ? email.split('@')[1].toLowerCase() : '';
+  const host = IMAP_PRESETS[dom];
+  if (!host) return;
+  if (!$('mhost').value.trim()) $('mhost').value = host;
+  if (!$('mport').value.trim()) $('mport').value = '993';
+  if (!$('muser').value.trim()) $('muser').value = email;
+}
+$('email').addEventListener('change', autofillImap);
+
 function addLog(text, cls){
   const d = document.createElement('div');
   const t = new Date().toLocaleTimeString('zh-CN', {hour12:false});
