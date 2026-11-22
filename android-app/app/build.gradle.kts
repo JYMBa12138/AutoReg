@@ -28,6 +28,20 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // android-mail 和 android-activation 都带 META-INF/NOTICE.md，打包时冲突
+    packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/NOTICE.md",
+                "META-INF/LICENSE.md",
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE.txt",
+                "META-INF/*.kotlin_module"
+            )
+        }
+    }
 }
 
 dependencies {

@@ -47,7 +47,8 @@ object ImapCode {
                     val code = extractCode(subj + "\n" + body) ?: continue
                     val ts = runCatching { m.sentDate?.time ?: 0L }.getOrDefault(0L)
                     if (ts < since && best != null) continue
-                    if (best == null || (ts >= since && ts > best!!.first)) best = Triple(ts, code, subj)
+                    val cur = best
+                    if (cur == null || (ts >= since && ts > cur.first)) best = Triple(ts, code, subj)
                 }
                 return best?.let { it.second to it.third }
             } finally {
