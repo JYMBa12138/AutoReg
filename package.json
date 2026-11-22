@@ -1,0 +1,15 @@
+{
+  "name": "autoreg-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "imapflow": "^1.0.178",
+    "mailparser": "^3.7.2",
+    "playwright": "^1.49.1"
+  }
+}
